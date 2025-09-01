@@ -1,0 +1,44 @@
+{
+  "companies": [
+    {
+      "name": "Razorpay",
+      "careers": "https://razorpay.com/career/"
+    },
+    {
+      "name": "CRED",
+      "careers": "https://jobs.lever.co/cred"
+    },
+    {
+      "name": "Meesho",
+      "careers": "https://meesho.com/careers"
+    },
+    {
+      "name": "PhonePe",
+      "careers": "https://www.phonepe.com/careers/"
+    },
+    {
+      "name": "Udaan",
+      "careers": "https://careers.udaan.com/"
+    },
+    {
+      "name": "Swiggy",
+      "careers": "https://careers.swiggy.com/"
+    },
+    {
+      "name": "Zepto",
+      "careers": "https://zepto.co/careers"
+    },
+    {
+      "name": "Dunzo",
+      "careers": "https://careers.dunzo.in/"
+    },
+    {
+      "name": "Groww",
+      "careers": "https://groww.io/careers"
+    },
+    {
+      "name": "Slice",
+      "careers": "https://slice.com/careers"
+    }
+  ]
+}

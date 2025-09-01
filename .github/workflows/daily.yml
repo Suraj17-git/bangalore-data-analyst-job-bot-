@@ -1,0 +1,23 @@
+
+name: Daily Bangalore Data Analyst Job Scan (full restore)
+on:
+  schedule:
+    - cron: "0 0 * * *"  # 00:00 UTC = 05:30 IST (daily)
+    - cron: "30 7 * * *"  # 07:30 UTC = 13:00 IST (daily)
+  workflow_dispatch: {}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - run: python job_search.py --once
+      - uses: actions/upload-artifact@v4
+        with:
+          name: latest-report
+          path: out/*.html
