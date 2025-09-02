@@ -9,7 +9,7 @@ import pandas as pd
 load_dotenv()
 
 CITY_NAMES = [c.strip() for c in os.getenv("CITY_NAMES","Bangalore,Bengaluru").split(",") if c.strip()]
-QUERY_KEYWORDS = [q.strip() for q in os.getenv("QUERY_KEYWORDS","Entry Level Data Analyst,Data Analyst Intern,Junior Data Analyst,Data Analytics Intern,Data Science Intern").split(",") if q.strip()]
+QUERY_KEYWORDS = [q.strip() for q in os.getenv("QUERY_KEYWORDS","Data Analyst Fresher,Data Analyst Intern,Junior Data Analyst,Entry Level Data Analyst,Data Analytics Fresher,Data Analytics Intern,Data Science Intern,Fresher Data Analyst,Data Analyst Trainee").split(",") if q.strip()]
 SAVE_HTML = os.getenv("SAVE_HTML","1") == "1"
 OUTPUT_DIR = os.getenv("OUTPUT_DIR","out")
 
