@@ -5,7 +5,8 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
 
-# Load environment variables at module level to ensure they're available
+# Load environment variables from .env file if it exists
+# This won't override existing environment variables (like those set in GitHub Actions)
 load_dotenv()
 
 def send_email(subject, html_body):

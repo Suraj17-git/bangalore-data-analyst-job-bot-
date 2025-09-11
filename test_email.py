@@ -10,7 +10,9 @@ load_dotenv()
 SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASS = os.getenv("SMTP_PASS", "")
+# Remove any spaces from the password as Gmail app passwords sometimes have spaces in the display format
+# but should be used without spaces
+SMTP_PASS = os.getenv("SMTP_PASS", "").replace(" ", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "")
 EMAIL_TO = [e.strip() for e in os.getenv("EMAIL_TO","").split(",") if e.strip()]
 

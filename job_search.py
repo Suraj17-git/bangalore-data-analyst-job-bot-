@@ -1,12 +1,24 @@
 
-import os, json, time, html
+import os, json, time, html, logging
 from datetime import datetime
 from dotenv import load_dotenv
 from utils.emailer import send_email
 from utils.normalize import normalize_text
+from utils.retry import retry_with_backoff
 import pandas as pd
 
 load_dotenv()
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(os.path.join(os.getenv("OUTPUT_DIR", "out"), "job_bot.log"), mode='a')
+    ]
+)
+logger = logging.getLogger('job_bot')
 
 CITY_NAMES = [c.strip() for c in os.getenv("CITY_NAMES","Bangalore,Bengaluru").split(",") if c.strip()]
 QUERY_KEYWORDS = [q.strip() for q in os.getenv("QUERY_KEYWORDS","Data Analyst Fresher,Data Analyst Intern,Junior Data Analyst,Entry Level Data Analyst,Data Analytics Fresher,Data Analytics Intern,Data Science Intern,Fresher Data Analyst,Data Analyst Trainee").split(",") if q.strip()]
@@ -15,30 +27,68 @@ OUTPUT_DIR = os.getenv("OUTPUT_DIR","out")
 
 from sources import google_serpapi, angel_list, yc_jobs, internshala, naukri, cutshort, lever, greenhouse, workable, linkedin, indeed, glassdoor, monster
 
+@retry_with_backoff(max_retries=2, initial_delay=1.0)
+def fetch_source(source_module, source_name, *args, **kwargs):
+    """Fetch jobs from a source with proper error handling"""
+    try:
+        logger.info(f"Fetching jobs from {source_name}...")
+        results = source_module.fetch_jobs(*args, **kwargs) or []
+        logger.info(f"Found {len(results)} jobs from {source_name}")
+        return results
+    except Exception as e:
+        logger.error(f"Error fetching from {source_name}: {str(e)}")
+        return []
+
 def fetch_all():
     jobs = []
-    jobs.extend(google_serpapi.fetch_jobs(CITY_NAMES, QUERY_KEYWORDS) or [])
-    jobs.extend(angel_list.fetch_jobs(CITY_NAMES, QUERY_KEYWORDS) or [])
-    jobs.extend(yc_jobs.fetch_jobs(CITY_NAMES, QUERY_KEYWORDS) or [])
-    jobs.extend(internshala.fetch_jobs(CITY_NAMES, QUERY_KEYWORDS) or [])
-    jobs.extend(naukri.fetch_jobs(CITY_NAMES, QUERY_KEYWORDS) or [])
-    jobs.extend(cutshort.fetch_jobs(CITY_NAMES, QUERY_KEYWORDS) or [])
-    jobs.extend(linkedin.fetch_jobs(CITY_NAMES, QUERY_KEYWORDS) or [])
-    jobs.extend(indeed.fetch_jobs(CITY_NAMES, QUERY_KEYWORDS) or [])
-    jobs.extend(glassdoor.fetch_jobs(CITY_NAMES, QUERY_KEYWORDS) or [])
-    jobs.extend(monster.fetch_jobs(CITY_NAMES, QUERY_KEYWORDS) or [])
+    sources = [
+        (google_serpapi, "SerpAPI"),
+        (angel_list, "Wellfound/AngelList"),
+        (yc_jobs, "YC Jobs"),
+        (internshala, "Internshala"),
+        (naukri, "Naukri"),
+        (cutshort, "Cutshort"),
+        (linkedin, "LinkedIn"),
+        (indeed, "Indeed"),
+        (glassdoor, "Glassdoor"),
+        (monster, "Monster")
+    ]
+    
+    for source_module, source_name in sources:
+        try:
+            results = fetch_source(source_module, source_name, CITY_NAMES, QUERY_KEYWORDS)
+            jobs.extend(results)
+        except Exception as e:
+            logger.error(f"Failed to fetch from {source_name}: {str(e)}")
+    
+    # Handle company career pages
     try:
         with open('company_careers.json','r') as f:
             cc = json.load(f)
+        
         for c in cc.get('companies', []):
+            company_name = c.get('name', 'Unknown')
             url = c.get('careers')
             if not url:
                 continue
-            jobs += lever.fetch_jobs_for_company(url) or []
-            jobs += greenhouse.fetch_jobs_for_company(url) or []
-            jobs += workable.fetch_jobs_for_company(url) or []
+                
+            try:
+                logger.info(f"Checking {company_name} careers page at {url}")
+                lever_jobs = lever.fetch_jobs_for_company(url) or []
+                greenhouse_jobs = greenhouse.fetch_jobs_for_company(url) or []
+                workable_jobs = workable.fetch_jobs_for_company(url) or []
+                
+                jobs.extend(lever_jobs)
+                jobs.extend(greenhouse_jobs)
+                jobs.extend(workable_jobs)
+                
+                logger.info(f"Found {len(lever_jobs) + len(greenhouse_jobs) + len(workable_jobs)} jobs from {company_name}")
+            except Exception as e:
+                logger.error(f"Error fetching jobs for company {company_name}: {str(e)}")
     except Exception as e:
-        print('[warn] company_careers.json not loaded or parsing failed', e)
+        logger.error(f"company_careers.json not loaded or parsing failed: {str(e)}")
+    
+    logger.info(f"Total jobs fetched from all sources: {len(jobs)}")
     return jobs
 
 def normalize_job(raw):
@@ -93,22 +143,36 @@ def to_html(jobs):
     return body
 
 def main(run_once=False):
-    print('[info] fetching jobs from sources...')
-    raw = fetch_all()
-    print(f'[info] raw count: {len(raw)}')
-    jobs = dedupe_and_rank(raw)
-    print(f'[info] after dedupe & rank: {len(jobs)}')
-    html_body = to_html(jobs)
-    subject = 'Bangalore Data Analyst — Daily Job Scan'
-    if SAVE_HTML:
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
-        ts = datetime.now().strftime('%Y%m%d_%H%M')
-        path = os.path.join(OUTPUT_DIR, f'jobs_{ts}.html')
-        with open(path,'w',encoding='utf-8') as f:
-            f.write(html_body)
-        print('[info] saved HTML ->', path)
-    send_email(subject, html_body)
-    print('[info] done.')
+    try:
+        logger.info('Starting job search process')
+        logger.info('Fetching jobs from sources...')
+        raw = fetch_all()
+        logger.info(f'Raw job count: {len(raw)}')
+        
+        jobs = dedupe_and_rank(raw)
+        logger.info(f'After deduplication and ranking: {len(jobs)}')
+        
+        html_body = to_html(jobs)
+        subject = 'Bangalore Data Analyst — Daily Job Scan'
+        
+        if SAVE_HTML:
+            os.makedirs(OUTPUT_DIR, exist_ok=True)
+            ts = datetime.now().strftime('%Y%m%d_%H%M')
+            path = os.path.join(OUTPUT_DIR, f'jobs_{ts}.html')
+            with open(path,'w',encoding='utf-8') as f:
+                f.write(html_body)
+            logger.info(f'Saved HTML report to {path}')
+        
+        try:
+            send_email(subject, html_body)
+            logger.info('Email notification sent successfully')
+        except Exception as e:
+            logger.error(f'Failed to send email: {str(e)}')
+        
+        logger.info('Job search process completed successfully')
+    except Exception as e:
+        logger.error(f'Error in main process: {str(e)}')
+        raise
 
 if __name__ == '__main__':
     import argparse
